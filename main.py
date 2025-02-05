@@ -78,8 +78,8 @@ class VideoRequest(BaseModel):
     user_id: str
     youtube_url: str
 
-# from celery.result import AsyncResult
-# from tasks import process_video_task
+from agent.tasks import process_video_task, celery_app
+from celery.result import AsyncResult
 
 
 @app.post("/process-video")
@@ -104,28 +104,29 @@ async def process_video(request: VideoRequest):
                 "blog_id": str(existing_blog["_id"]),
                 "content": existing_blog_content
         }
-        summary_crew = YTSummaryCrew(request.youtube_url)
-        result = summary_crew.run()
-        print("result received",result)
-        result_json_str = json.dumps(result, default=str)
-        print("result received",result_json_str)
+        # summary_crew = YTSummaryCrew(request.youtube_url)
+        # result = summary_crew.run()
+        # print("result received",result)
+        # result_json_str = json.dumps(result, default=str)
+        # print("result received",result_json_str)
 
-        video_id = request.youtube_url.split("v=")[1]
-        thumbnail_url = f"http://img.youtube.com/vi/{video_id}/0.jpg"
-        blog_post = BlogPost(
-            user_id=request.user_id,
-            youtube_url=request.youtube_url,
-            content=str(result),
-            thumbnail=thumbnail_url
-        )
+        # video_id = request.youtube_url.split("v=")[1]
+        # thumbnail_url = f"http://img.youtube.com/vi/{video_id}/0.jpg"
+        # blog_post = BlogPost(
+        #     user_id=request.user_id,
+        #     youtube_url=request.youtube_url,
+        #     content=str(result),
+        #     thumbnail=thumbnail_url
+        # )
         
-        inserted = blogs_collection.insert_one(blog_post.dict())
-        # task = process_video_task.delay(request.user_id, request.youtube_url)
+        # inserted = blogs_collection.insert_one(blog_post.dict())
+        task = process_video_task.delay(request.user_id, request.youtube_url)
+
         return {
-            "status": "success",
-            "blog_id": str(inserted.inserted_id),
-            "content": result_json_str
+            "task_id": task.id,
+            "status": "processing"
         }
+
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -151,10 +152,19 @@ async def get_blog(blog_id: str):
 
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str):
-    task = AsyncResult(task_id)
-    if task.ready():
-        if task.successful():
-            blog_id = task.result
+    """
+    Poll the Celery task by its ID.
+    If finished successfully, retrieve the created blog from Mongo and return it.
+    """
+    task_result = AsyncResult(task_id, app=celery_app)
+
+    if task_result.ready():
+        if task_result.successful():
+            # The task returns the blog_id as result
+            blog_id = task_result.result
+            # If it started with 'Error', treat it as a failure
+            if blog_id.startswith("Error"):
+                return {"status": "failed", "error": blog_id}
             blog = blogs_collection.find_one({"_id": ObjectId(blog_id)})
             if blog:
                 blog["_id"] = str(blog["_id"])
@@ -162,5 +172,10 @@ async def get_task_status(task_id: str):
                     "status": "completed",
                     "blog": blog
                 }
-        return {"status": "failed", "error": str(task.result)}
+            # If no blog found, it’s unusual but handle gracefully
+            return {"status": "failed", "error": "Blog not found after task"}
+        # If not successful, it could be an exception
+        return {"status": "failed", "error": str(task_result.result)}
+
+    # Task is still running
     return {"status": "processing"}
