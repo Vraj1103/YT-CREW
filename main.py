@@ -130,6 +130,24 @@ async def process_video(request: VideoRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+# api for getting all blocks based on userid
+@app.get("/blogs/{user_id}")
+async def get_blogs(user_id: str):
+    blogs = blogs_collection.find({"user_id": user_id})
+    blog_list = []
+    for blog in blogs:
+        blog["_id"] = str(blog["_id"])
+        blog_list.append(blog)
+    return blog_list
+
+# api for getting a single blog based on blogid
+@app.get("/blog/{blog_id}")
+async def get_blog(blog_id: str):
+    blog = blogs_collection.find_one({"_id": ObjectId(blog_id)})
+    if blog:
+        blog["_id"] = str(blog["_id"])
+        return blog
+    raise HTTPException(status_code=404, detail="Blog not found")
 
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str):
