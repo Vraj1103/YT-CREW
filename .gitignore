@@ -5,3 +5,6 @@ __pycache__/
 
 # Ignore virtual environment
 venv/
+
+# ignore rdb files
+*.rdb

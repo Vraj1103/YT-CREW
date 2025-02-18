@@ -236,3 +236,4 @@ youtube-transcript-api
 redis
 pydantic[email]
 pydantic-settings
+pinecone-client openai
