@@ -237,3 +237,4 @@ redis
 pydantic[email]
 pydantic-settings
 pinecone-client openai
+litellm

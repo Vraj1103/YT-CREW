@@ -8,6 +8,7 @@ from datetime import datetime
 from bson import ObjectId
 from typing import Optional
 import json
+from openai import OpenAI
 
 app = FastAPI()
 
@@ -33,6 +34,9 @@ db = client[DB_NAME]
 users_collection = db["users"]
 blogs_collection = db["blogs"]
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
 @app.get("/db-check")
 def db_check():
     # Just a quick check by counting documents in your 'users' collection
@@ -54,6 +58,15 @@ class BlogPost(BaseModel):
     created_at: datetime = datetime.now()
     task_id: Optional[str] = None
 
+class VideoRequest(BaseModel):
+    user_id: str
+    youtube_url: str
+
+class QueryRequest(BaseModel):
+    user_id: str
+    video_title: str
+    query: str
+
 @app.post("/users")
 async def create_user(user: User):
     if users_collection.find_one({"email": user.email}):
@@ -73,10 +86,6 @@ async def get_user(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     except:
         raise HTTPException(status_code=400, detail="Invalid user ID")
-
-class VideoRequest(BaseModel):
-    user_id: str
-    youtube_url: str
 
 from agent.tasks import process_video_task, celery_app
 from celery.result import AsyncResult
@@ -179,3 +188,42 @@ async def get_task_status(task_id: str):
 
     # Task is still running
     return {"status": "processing"}
+
+from utils import get_blog_by_user_and_title, fetch_summary_text, fetch_relevant_transcript_chunks, build_answer_prompt, call_openai_for_answer
+
+@app.post("/ask")
+async def answer_query(request: QueryRequest):
+    """
+    Answer a user's query by:
+      1. Retrieving the corresponding blog (to obtain the YouTube URL).
+      2. Querying Pinecone for the stored summary and the most relevant transcript chunks.
+      3. Building a prompt and calling OpenAI to generate an answer.
+    """
+    blog = get_blog_by_user_and_title(request.user_id, request.video_title)
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found for the given user and video title.")
+    print("Blog found")
+    
+    youtube_url = blog.get("youtube_url")
+    if not youtube_url:
+        raise HTTPException(status_code=500, detail="Blog is missing the YouTube URL.")
+    print(f"Youtube URL found")
+
+    # Fetch summary text from Pinecone (stored in metadata as "summary_text")
+    summary_text = fetch_summary_text(blog.get("user_id"), youtube_url)
+    if not summary_text:
+        raise HTTPException(status_code=500, detail="Summary vector not found in Pinecone.")
+    print(f"Summary text found")
+    
+    # Fetch the most relevant transcript chunks using the user's query
+    transcript_chunks = fetch_relevant_transcript_chunks(request.user_id, youtube_url, request.query, top_k=5)
+    if not transcript_chunks:
+        raise HTTPException(status_code=500, detail="Relevant transcript chunks not found in Pinecone.")
+
+    # Build the prompt for the answer
+    prompt = build_answer_prompt(request.query, summary_text, transcript_chunks)
+    print(f"Prompt for answer:\n{prompt}")
+
+    # Call OpenAI to generate the answer
+    answer = call_openai_for_answer(prompt)
+    return {"answer": answer}
