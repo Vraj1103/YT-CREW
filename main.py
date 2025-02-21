@@ -210,10 +210,10 @@ async def answer_query(request: QueryRequest):
     print(f"Youtube URL found")
 
     # Fetch summary text from Pinecone (stored in metadata as "summary_text")
-    summary_text = fetch_summary_text(blog.get("user_id"), youtube_url)
-    if not summary_text:
-        raise HTTPException(status_code=500, detail="Summary vector not found in Pinecone.")
-    print(f"Summary text found")
+    # summary_text = fetch_summary_text(blog.get("user_id"), youtube_url)
+    # if not summary_text:
+    #     raise HTTPException(status_code=500, detail="Summary vector not found in Pinecone.")
+    # print(f"Summary text found")
     
     # Fetch the most relevant transcript chunks using the user's query
     transcript_chunks = fetch_relevant_transcript_chunks(request.user_id, youtube_url, request.query, top_k=5)
@@ -221,7 +221,7 @@ async def answer_query(request: QueryRequest):
         raise HTTPException(status_code=500, detail="Relevant transcript chunks not found in Pinecone.")
 
     # Build the prompt for the answer
-    prompt = build_answer_prompt(request.query, summary_text, transcript_chunks)
+    prompt = build_answer_prompt(request.query, blog.get("comprehensive_summary","No summary provided with this video, use your knowledge"), transcript_chunks)
     print(f"Prompt for answer:\n{prompt}")
 
     # Call OpenAI to generate the answer

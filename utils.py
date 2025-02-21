@@ -157,3 +157,27 @@ def call_openai_for_answer(prompt: str) -> str:
     except Exception as e:
         print(f"Error calling OpenAI for answer: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error generating answer from OpenAI.")
+
+# def call_openai_for_answer(prompt: str) -> str:
+#     """
+#     Call OpenAI's chat (o1-preview) with the given prompt and return the answer text.
+#     """
+#     try:
+#         response = openai_client.chat.completions.create(
+#             model="o1-preview",
+#             messages=[
+#                 {
+#                     "role": "user",
+#                     "content": "You are an expert answer generator. " 
+#                                "Please provide a concise answer to the following:\n\n"
+#                                f"{prompt}"
+#                 }
+#             ],
+#             # temperature=0.7,
+#             max_completion_tokens=1024,
+#         )
+#         answer = response.choices[0].message.content
+#         return answer.strip()
+#     except Exception as e:
+#         print(f"Error calling OpenAI for answer: {e}")
+#         raise HTTPException(status_code=500, detail="Error generating answer from OpenAI.")
